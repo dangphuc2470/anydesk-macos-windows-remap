@@ -60,7 +60,7 @@ When controlling macOS from Windows via AnyDesk:
 ```bash
 git clone https://github.com/dangphuc2470/anydesk-macos-windows-remap.git
 cd anydesk-macos-windows-remap
-chmod +x install.sh uninstall.sh
+chmod +x install.sh uninstall.sh restart.sh
 ./install.sh
 ```
 
@@ -74,6 +74,36 @@ Because macOS protects input event streams, grant Accessibility permission once:
 3. Toggle the switch to **ON**.
 
 The daemon will run automatically in the background on every login.
+
+---
+
+## Service Management
+
+### Restart the Daemon
+To restart or reload the daemon after modifying code or updating permissions:
+```bash
+./restart.sh
+```
+Or via `launchctl`:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist 2>/dev/null
+launchctl load ~/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist
+```
+*(Because `KeepAlive` is enabled, running `killall anydesk_remap` will also immediately restart the daemon with the new binary).*
+
+### Check Status & View Logs
+* Check if the process is running:
+  ```bash
+  ps aux | grep anydesk_remap
+  ```
+* View live output logs:
+  ```bash
+  tail -f ~/.config/anydesk-remap/logs/daemon.log
+  ```
+* View error logs:
+  ```bash
+  tail -f ~/.config/anydesk-remap/logs/daemon.error.log
+  ```
 
 ---
 
