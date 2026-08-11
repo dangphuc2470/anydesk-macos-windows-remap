@@ -58,7 +58,7 @@ When controlling macOS from Windows via AnyDesk:
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/anydesk-macos-windows-remap.git
+git clone https://github.com/dangphuc2470/anydesk-macos-windows-remap.git
 cd anydesk-macos-windows-remap
 chmod +x install.sh uninstall.sh
 ./install.sh
@@ -69,7 +69,7 @@ Because macOS protects input event streams, grant Accessibility permission once:
 1. Open **System Settings** -> **Privacy & Security** -> **Accessibility**.
 2. Click **`+`** (or toggle on) and add:
    ```text
-   ~/.config/phucdnh-anydesk-remap/phucdnh_anydesk_remap
+   ~/.config/anydesk-remap/anydesk_remap
    ```
 3. Toggle the switch to **ON**.
 
@@ -97,7 +97,7 @@ To completely remove the daemon and LaunchAgent:
 
 ## Author
 
-* **phucdnh**
+* [@dangphuc2470](https://github.com/dangphuc2470)
 
 ## License
 

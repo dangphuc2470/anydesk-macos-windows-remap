@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.phucdnh.anydesk-remap</string>
+    <string>com.dangphuc2470.anydesk-remap</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{{INSTALL_DIR}}/phucdnh_anydesk_remap</string>
+        <string>{{INSTALL_DIR}}/anydesk_remap</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

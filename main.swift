@@ -1,7 +1,7 @@
 //
 //  main.swift
 //  anydesk-macos-windows-remap
-//  Author: phucdnh
+//  Author: dangphuc2470
 //  Description: A complete, secure macOS EventTap daemon for AnyDesk that maps all Windows shortcuts
 //               (Ctrl+C/V/Z/A, Ctrl+Backspace, Win+Shift+S, Win+L, Win+D, Win+Tab, Ctrl+Arrows, etc.)
 //  Security: No network access, no disk logging, 100% local in-memory event modifier.

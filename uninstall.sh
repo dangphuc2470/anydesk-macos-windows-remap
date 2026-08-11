@@ -3,11 +3,11 @@ set -e
 
 # ==============================================================================
 # anydesk-macos-windows-remap Uninstaller
-# Author: phucdnh
+# Author: dangphuc2470
 # ==============================================================================
 
-INSTALL_DIR="$HOME/.config/phucdnh-anydesk-remap"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.phucdnh.anydesk-remap.plist"
+INSTALL_DIR="$HOME/.config/anydesk-remap"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist"
 
 echo "========================================================"
 echo " Uninstalling anydesk-macos-windows-remap..."
@@ -21,7 +21,7 @@ if [ -f "$PLIST_DEST" ]; then
 fi
 
 # 2. Kill running processes
-killall phucdnh_anydesk_remap 2>/dev/null || true
+killall anydesk_remap phucdnh_anydesk_remap 2>/dev/null || true
 
 # 3. Remove installed files
 if [ -d "$INSTALL_DIR" ]; then

@@ -3,14 +3,14 @@ set -e
 
 # ==============================================================================
 # anydesk-macos-windows-remap Installer
-# Author: phucdnh
+# Author: dangphuc2470
 # ==============================================================================
 
-INSTALL_DIR="$HOME/.config/phucdnh-anydesk-remap"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.phucdnh.anydesk-remap.plist"
+INSTALL_DIR="$HOME/.config/anydesk-remap"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist"
 
 echo "========================================================"
-echo " Installing anydesk-macos-windows-remap (by phucdnh)..."
+echo " Installing anydesk-macos-windows-remap (by dangphuc2470)..."
 echo "========================================================"
 
 # 1. Create target directories
@@ -20,14 +20,14 @@ mkdir -p "$HOME/Library/LaunchAgents"
 
 # 2. Compile binary
 echo "==> Compiling Swift daemon..."
-swiftc -O -o "$INSTALL_DIR/phucdnh_anydesk_remap" main.swift
+swiftc -O -o "$INSTALL_DIR/anydesk_remap" main.swift
 
 # Copy main.swift for reference
 cp main.swift "$INSTALL_DIR/main.swift"
 
 # 3. Generate LaunchAgent plist with dynamic home path
 echo "==> Configuring LaunchAgent..."
-sed "s|{{INSTALL_DIR}}|$INSTALL_DIR|g" com.phucdnh.anydesk-remap.plist.template > "$PLIST_DEST"
+sed "s|{{INSTALL_DIR}}|$INSTALL_DIR|g" com.dangphuc2470.anydesk-remap.plist.template > "$PLIST_DEST"
 
 # 4. Stop any existing instance and load LaunchAgent
 launchctl unload "$PLIST_DEST" 2>/dev/null || true
@@ -39,5 +39,5 @@ echo " Installation Complete!"
 echo "========================================================"
 echo "IMPORTANT: Please grant Accessibility permission in:"
 echo "System Settings -> Privacy & Security -> Accessibility"
-echo "and add / toggle ON: $INSTALL_DIR/phucdnh_anydesk_remap"
+echo "and add / toggle ON: $INSTALL_DIR/anydesk_remap"
 echo "========================================================"
