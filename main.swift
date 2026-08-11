@@ -51,13 +51,30 @@ func isAnyDeskEvent(_ event: CGEvent) -> Bool {
     return false
 }
 
-func getFrontmostAppBundleID() -> String? {
-    return NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+func isFrontmostAppAnyDesk() -> Bool {
+    guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
+        return false
+    }
+    for anydeskID in anydeskBundleIDs {
+        if bundleID == anydeskID {
+            return true
+        }
+    }
+    if let name = NSWorkspace.shared.frontmostApplication?.localizedName, name.lowercased().contains("anydesk") {
+        return true
+    }
+    return false
 }
 
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     // Only modify events originating from AnyDesk processes
     guard isAnyDeskEvent(event) else {
+        return Unmanaged.passUnretained(event)
+    }
+    
+    // If AnyDesk is the active frontmost window on Mac (e.g. nested session: Laptop -> Mac -> PC),
+    // pass keystrokes directly through without swapping so the target PC receives native Ctrl/Win!
+    if isFrontmostAppAnyDesk() {
         return Unmanaged.passUnretained(event)
     }
     
