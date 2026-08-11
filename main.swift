@@ -10,37 +10,38 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import Darwin
 
-// Target AnyDesk Bundle Identifiers
-let anydeskBundleIDs = [
-    "com.philandro.anydesk",
-    "com.anydesk.anydesk"
-]
-
-func getAnyDeskPIDs() -> Set<pid_t> {
+func getAllAnyDeskPIDs() -> Set<pid_t> {
     var pids = Set<pid_t>()
-    for bundleID in anydeskBundleIDs {
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        for app in apps {
-            pids.insert(app.processIdentifier)
-        }
-    }
-    
-    let allApps = NSWorkspace.shared.runningApplications
-    for app in allApps {
-        if let name = app.localizedName, name.lowercased().contains("anydesk") {
-            pids.insert(app.processIdentifier)
+    let bufferSize = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+    if bufferSize > 0 {
+        let count = Int(bufferSize) / MemoryLayout<pid_t>.stride
+        var pidList = [pid_t](repeating: 0, count: count)
+        let bytesReturned = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pidList, bufferSize)
+        let actualCount = Int(bytesReturned) / MemoryLayout<pid_t>.stride
+        for i in 0..<actualCount {
+            let pid = pidList[i]
+            if pid <= 0 { continue }
+            var pathBuffer = [CChar](repeating: 0, count: 4096)
+            let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+            if pathLength > 0 {
+                let path = String(cString: pathBuffer)
+                if path.lowercased().contains("anydesk") && !path.contains("anydesk_remap") && !path.contains("phucdnh_anydesk_remap") {
+                    pids.insert(pid)
+                }
+            }
         }
     }
     return pids
 }
 
-var cachedAnyDeskPIDs = getAnyDeskPIDs()
+var cachedAnyDeskPIDs = getAllAnyDeskPIDs()
 var lastPIDCheck = Date()
 
 func isAnyDeskEvent(_ event: CGEvent) -> Bool {
-    if Date().timeIntervalSince(lastPIDCheck) > 5.0 {
-        cachedAnyDeskPIDs = getAnyDeskPIDs()
+    if Date().timeIntervalSince(lastPIDCheck) > 3.0 {
+        cachedAnyDeskPIDs = getAllAnyDeskPIDs()
         lastPIDCheck = Date()
     }
     
@@ -48,6 +49,7 @@ func isAnyDeskEvent(_ event: CGEvent) -> Bool {
     if sourcePID != 0 && cachedAnyDeskPIDs.contains(sourcePID) {
         return true
     }
+    
     return false
 }
 
@@ -55,10 +57,8 @@ func isFrontmostAppAnyDesk() -> Bool {
     guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
         return false
     }
-    for anydeskID in anydeskBundleIDs {
-        if bundleID == anydeskID {
-            return true
-        }
+    if bundleID.contains("anydesk") || bundleID.contains("philandro") {
+        return true
     }
     if let name = NSWorkspace.shared.frontmostApplication?.localizedName, name.lowercased().contains("anydesk") {
         return true
@@ -237,7 +237,7 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         
         // --- Windows Shortcut: Ctrl + H -> Replace / History (Avoid hiding app) ---
         if keyCode == 4 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // 'h' with Ctrl
-            let frontmostID = getFrontmostAppBundleID() ?? ""
+            let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
             if frontmostID.contains("edgemac") || frontmostID.contains("Chrome") || frontmostID.contains("Safari") || frontmostID.contains("Browser") {
                 // Browser History (Cmd + Y)
                 event.setIntegerValueField(.keyboardEventKeycode, value: 16) // 'y'
@@ -270,7 +270,7 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     return Unmanaged.passUnretained(event)
 }
 
-print("[phucdnh] AnyDesk Remap Daemon starting...")
+print("[dangphuc2470] AnyDesk Remap Daemon starting...")
 
 let eventMask = (1 << CGEventType.keyDown.rawValue) |
                 (1 << CGEventType.keyUp.rawValue) |
@@ -297,7 +297,7 @@ if eventTap == nil {
 }
 
 guard let tap = eventTap else {
-    print("[phucdnh] ERROR: Failed to create CGEventTap. Please grant Accessibility permissions in System Settings -> Privacy & Security -> Accessibility.")
+    print("[dangphuc2470] ERROR: Failed to create CGEventTap. Please grant Accessibility permissions.")
     exit(1)
 }
 
@@ -305,5 +305,5 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
-print("[phucdnh] AnyDesk Remap Daemon is ACTIVE.")
+print("[dangphuc2470] AnyDesk Remap Daemon is ACTIVE. Intercepting all AnyDesk processes safely.")
 CFRunLoopRun()

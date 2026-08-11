@@ -6,19 +6,20 @@ set -e
 # Author: dangphuc2470
 # ==============================================================================
 
-PLIST_DEST="$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist"
+echo "==> Restarting anydesk-macos-windows-remap daemon..."
 
-echo "==> Restarting anydesk-macos-windows-remap..."
+# Reload LaunchAgents if present
+for PLIST in "$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist" "$HOME/Library/LaunchAgents/com.phucdnh.anydesk-remap.plist"; do
+    if [ -f "$PLIST" ]; then
+        launchctl unload "$PLIST" 2>/dev/null || true
+        launchctl load "$PLIST" 2>/dev/null || true
+        echo "==> Reloaded $PLIST"
+    fi
+done
 
-if [ -f "$PLIST_DEST" ]; then
-    launchctl unload "$PLIST_DEST" 2>/dev/null || true
-    launchctl load "$PLIST_DEST"
-    echo "==> Service reloaded successfully."
-else
-    killall anydesk_remap 2>/dev/null || true
-    echo "==> Process restarted."
-fi
+# Kill running processes so launchd KeepAlive restarts with fresh binary
+killall anydesk_remap phucdnh_anydesk_remap 2>/dev/null || true
 
-echo "==> Status check:"
-sleep 0.5
-ps aux | grep anydesk_remap | grep -v grep || echo "Warning: Process not detected. Please verify Accessibility permissions."
+sleep 0.8
+echo "==> Active Daemon Status:"
+ps aux | grep -E "anydesk_remap|phucdnh_anydesk_remap" | grep -v grep || echo "Warning: Daemon not currently detected in process list."
