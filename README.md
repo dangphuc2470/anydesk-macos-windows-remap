@@ -1,4 +1,4 @@
-# ⌨️ anydesk-macos-windows-remap
+# anydesk-macos-windows-remap
 
 > **A lightweight, ultra-secure macOS background daemon that seamlessly translates Windows keyboard shortcuts when remotely controlling macOS via AnyDesk.**
 
@@ -9,25 +9,25 @@
 
 ---
 
-## 🎯 The Problem
+## The Problem
 
 When using a **Windows PC** to remotely control a **macOS** machine through **AnyDesk**:
-1. **Shortcuts Don't Match:** Pressing `Ctrl + C`, `Ctrl + V`, `Ctrl + Z`, `Ctrl + S`, `Ctrl + A` sends `Control` instead of macOS `Command` (`⌘`), forcing you to awkwardly use the `Windows` key (`Win + C`) to copy.
+1. **Shortcuts Do Not Match:** Pressing `Ctrl + C`, `Ctrl + V`, `Ctrl + Z`, `Ctrl + S`, `Ctrl + A` sends `Control` instead of macOS `Command` (`⌘`), forcing you to use the `Windows` key (`Win + C`) to copy.
 2. **Karabiner-Elements is Bypassed:** Karabiner works at the hardware HID Driver level. AnyDesk injects synthetic keystrokes directly into macOS WindowServer via `CGEventPost`, completely bypassing Karabiner rules.
 3. **AutoHotkey Fails on Windows:** AnyDesk on Windows runs as an elevated service/admin process, ignoring standard user-space AutoHotkey hooks due to Windows UIPI security.
 
 ---
 
-## 💡 The Solution
+## The Solution
 
 **`anydesk-macos-windows-remap`** runs as a native, lightweight Swift daemon using macOS CoreGraphics **`CGEventTap`**:
-* 🔍 **Smart PID Detection:** Intercepts keystrokes originating **strictly from AnyDesk processes**. Physical Mac keyboards remain untouched.
-* ⚡ **Zero Latency:** Modifier swaps (`Ctrl` $\leftrightarrow$ `Cmd`) and shortcut conversions happen in-memory inside the macOS WindowServer event stream.
-* 🛡️ **100% Secure:** No network access, no disk logging, and no external dependencies.
+* **Smart PID Detection:** Intercepts keystrokes originating **strictly from AnyDesk processes**. Physical Mac keyboards remain untouched.
+* **Zero Latency:** Modifier swaps (`Ctrl` <-> `Cmd`) and shortcut conversions happen in-memory inside the macOS WindowServer event stream.
+* **100% Secure:** No network access, no disk logging, and no external dependencies.
 
 ---
 
-## ✨ Features & Shortcut Mappings
+## Features & Shortcut Mappings
 
 When controlling macOS from Windows via AnyDesk:
 
@@ -54,7 +54,7 @@ When controlling macOS from Windows via AnyDesk:
 
 ---
 
-## 🚀 Quick Start & Installation
+## Quick Start & Installation
 
 ### 1. Clone & Install
 ```bash
@@ -66,18 +66,18 @@ chmod +x install.sh uninstall.sh
 
 ### 2. Grant Accessibility Permissions
 Because macOS protects input event streams, grant Accessibility permission once:
-1. Open **System Settings** $\rightarrow$ **Privacy & Security** $\rightarrow$ **Accessibility**.
+1. Open **System Settings** -> **Privacy & Security** -> **Accessibility**.
 2. Click **`+`** (or toggle on) and add:
    ```text
    ~/.config/phucdnh-anydesk-remap/phucdnh_anydesk_remap
    ```
 3. Toggle the switch to **ON**.
 
-That's it! The daemon will run automatically in the background on every login.
+The daemon will run automatically in the background on every login.
 
 ---
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 * **Zero Network Activity:** Does not import network libraries or make socket connections.
 * **No Disk Persistence of Keystrokes:** Keystroke modifiers are altered purely in volatile memory.
@@ -86,7 +86,7 @@ That's it! The daemon will run automatically in the background on every login.
 
 ---
 
-## 🗑️ Uninstallation
+## Uninstallation
 
 To completely remove the daemon and LaunchAgent:
 ```bash
@@ -95,10 +95,10 @@ To completely remove the daemon and LaunchAgent:
 
 ---
 
-## 👤 Author
+## Author
 
 * **phucdnh**
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
