@@ -131,11 +131,13 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
             return Unmanaged.passUnretained(event)
         }
         
-        // --- Windows Shortcut: Win + L -> Lock Screen (Ctrl + Cmd + Q) ---
-        if keyCode == 37 && hasCmd && !hasCtrl && !hasAlt && !hasShift { // 'l' with Cmd
+        // --- Windows Shortcut: Win + L / Win + Shift + L / Ctrl + Alt + L -> Lock Screen (Ctrl + Cmd + Q) ---
+        if keyCode == 37 && (hasCmd || (hasCtrl && hasAlt)) { // 'l' with Win, Win+Shift, or Ctrl+Alt
             event.setIntegerValueField(.keyboardEventKeycode, value: 12) // 'q'
             flags.insert(.maskControl)
             flags.insert(.maskCommand)
+            flags.remove(.maskShift)
+            flags.remove(.maskAlternate)
             event.flags = flags
             return Unmanaged.passUnretained(event)
         }

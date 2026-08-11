@@ -42,8 +42,8 @@ When controlling macOS from Windows via AnyDesk:
 | `Ctrl + Backspace` | `Option + Backspace` | Delete word backward |
 | `Ctrl + Delete` | `Option + Delete` | Delete word forward |
 | `Alt + Backspace` | `Cmd + Backspace` | Delete line to start |
-| `Win + Shift + S` | `Cmd + Shift + 4` | Interactive Screenshot selection |
-| `Win + L` | `Ctrl + Cmd + Q` | Lock macOS Screen |
+| `Win + Shift + S` | `Cmd + Shift + 4` | Interactive Screenshot to Clipboard |
+| `Win + Shift + L` / `Ctrl + Alt + L` / `Win + L` | `Ctrl + Cmd + Q` | Lock macOS Screen (Bypasses Windows Host Lock) |
 | `Win + D` | `F11` | Show Desktop |
 | `Win + Tab` | `Ctrl + Up Arrow` | Mission Control |
 | `Ctrl + Left/Right` | `Option + Left/Right` | Jump cursor word by word |
