@@ -121,12 +121,12 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
         
-        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot (Cmd + Shift + 4) ---
+        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
         if keyCode == 1 && hasCmd && hasShift { // 's' with Cmd + Shift
             event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
+            flags.insert(.maskControl)
             flags.insert(.maskCommand)
             flags.insert(.maskShift)
-            flags.remove(.maskControl)
             event.flags = flags
             return Unmanaged.passUnretained(event)
         }
