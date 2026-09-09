@@ -12,6 +12,7 @@ import CoreGraphics
 import AppKit
 import Darwin
 
+
 func getAllAnyDeskPIDs() -> Set<pid_t> {
     var pids = Set<pid_t>()
     let bufferSize = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
@@ -52,17 +53,98 @@ func isAnyDeskEvent(_ event: CGEvent) -> Bool {
     return false
 }
 
-func isFrontmostAppAnyDesk() -> Bool {
-    guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
-        return false
-    }
-    if bundleID.contains("anydesk") || bundleID.contains("philandro") {
-        return true
-    }
-    if let name = NSWorkspace.shared.frontmostApplication?.localizedName, name.lowercased().contains("anydesk") {
-        return true
-    }
+// macOS US-layout keyCode table for ASCII printable characters.
+// AnyDesk injects all keys as kc=0 + unicode string.
+// QEMU-based emulators (qemu-system-aarch64, etc.) ignore the unicode field
+// and use only the macOS keyCode — so kc=0 always means 'a'.
+// We translate kc=0 + unicode -> correct keyCode before passing to QEMU.
+let unicodeToKeyCode: [Character: Int64] = [
+    "a": 0,  "b": 11, "c": 8,  "d": 2,  "e": 14, "f": 3,  "g": 5,
+    "h": 4,  "i": 34, "j": 38, "k": 40, "l": 37, "m": 46, "n": 45,
+    "o": 31, "p": 35, "q": 12, "r": 15, "s": 1,  "t": 17, "u": 32,
+    "v": 9,  "w": 13, "x": 7,  "y": 16, "z": 6,
+    "A": 0,  "B": 11, "C": 8,  "D": 2,  "E": 14, "F": 3,  "G": 5,
+    "H": 4,  "I": 34, "J": 38, "K": 40, "L": 37, "M": 46, "N": 45,
+    "O": 31, "P": 35, "Q": 12, "R": 15, "S": 1,  "T": 17, "U": 32,
+    "V": 9,  "W": 13, "X": 7,  "Y": 16, "Z": 6,
+    "1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
+    "6": 22, "7": 26, "8": 28, "9": 25, "0": 29,
+    "!": 18, "@": 19, "#": 20, "$": 21, "%": 23,
+    "^": 22, "&": 26, "*": 28, "(": 25, ")": 29,
+    " ": 49, "\r": 36, "\n": 36, "\t": 48,
+    "-": 27, "_": 27, "=": 24, "+": 24,
+    "[": 33, "{": 33, "]": 30, "}": 30,
+    "\\": 42, "|": 42, ";": 41, ":": 41,
+    "'": 39, "\"": 39, ",": 43, "<": 43,
+    ".": 47, ">": 47, "/": 44, "?": 44,
+    "`": 50, "~": 50,
+]
+
+// Characters that require Shift on a US keyboard layout.
+let shiftRequiredChars: Set<Character> = [
+    "A","B","C","D","E","F","G","H","I","J","K","L","M",
+    "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+    "!","@","#","$","%","^","&","*","(",")",
+    "_","+","{","}","|",":","\"","<",">","?","~"
+]
+
+// Returns true for QEMU-based Android emulators.
+// These processes have no macOS bundle ID and use raw macOS keyCodes
+// (not the unicode field), so kc=0 events must be remapped to correct keyCodes.
+func isFrontmostAppQEMU() -> Bool {
+    guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+    let name = app.localizedName?.lowercased() ?? ""
+    return name.contains("qemu") ||
+           name.contains("emulator") ||
+           name.contains("bluestacks") ||
+           name.contains("genymotion") ||
+           name.contains("noxplayer") ||
+           name.contains("ldplayer")
+}
+
+// Returns true for apps that should receive all key events 100% untouched:
+// - AnyDesk nested session (Mac -> another PC via AnyDesk)
+// - VM apps (VMware Fusion, Parallels, VirtualBox)
+// Note: QEMU/Android emulators are handled separately by isFrontmostAppQEMU()
+// because they need keyCode correction, not just a plain pass-through.
+func isFrontmostAppPassThrough() -> Bool {
+    guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+    let bundleID = app.bundleIdentifier ?? ""
+    let name = app.localizedName?.lowercased() ?? ""
+
+    // AnyDesk nested session to another PC
+    if bundleID.contains("anydesk") || bundleID.contains("philandro") { return true }
+    if name.contains("anydesk") { return true }
+
+    // Virtual machines that support unicode via Accessibility
+    if bundleID.contains("vmware") || bundleID.contains("parallels") || bundleID.contains("virtualbox") { return true }
+    if name.contains("vmware") || name.contains("parallels") || name.contains("virtualbox") { return true }
+
     return false
+}
+
+// AnyDesk injects all character keys as kc=0 + unicode string.
+// Apps that capture raw hardware keyCodes (like QEMU or AnyDesk nested sessions connecting
+// to a remote Windows PC) see kc=0 and interpret it as 'a' (kVK_ANSI_A).
+// This translates kc=0 + unicode -> correct macOS keyCode.
+func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
+    guard type == .keyDown || type == .keyUp else { return }
+    let kc = event.getIntegerValueField(.keyboardEventKeycode)
+    guard kc == 0 else { return }
+    var ucLen: Int = 0
+    var ucBuf = [UniChar](repeating: 0, count: 4)
+    event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &ucLen, unicodeString: &ucBuf)
+    guard ucLen > 0 else { return }
+    let ucStr = String(decoding: ucBuf.prefix(ucLen), as: UTF16.self)
+    guard let ch = ucStr.first, let correctKC = unicodeToKeyCode[ch] else { return }
+    if correctKC != 0 {
+        event.setIntegerValueField(.keyboardEventKeycode, value: correctKC)
+    }
+    if shiftRequiredChars.contains(ch) && !event.flags.contains(.maskShift) {
+        var fl = event.flags
+        fl.insert(.maskShift)
+        event.flags = fl
+    }
 }
 
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
@@ -70,10 +152,14 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     guard isAnyDeskEvent(event) else {
         return Unmanaged.passUnretained(event)
     }
-    
-    // If AnyDesk is the active frontmost window on Mac (e.g. nested session: Laptop -> Mac -> PC),
-    // pass all key events 100% untouched so the target PC receives native Ctrl/Win without mangled keyUp/keyDown!
-    if isFrontmostAppAnyDesk() {
+
+    // Fix AnyDesk kc=0 bug for all injected key events
+    fixAnyDeskZeroKeyCode(event: event, type: type)
+
+    // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
+    // These apps manage their own shortcuts or forward keys to a remote/guest OS,
+    // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
+    if isFrontmostAppQEMU() || isFrontmostAppPassThrough() {
         return Unmanaged.passUnretained(event)
     }
     
@@ -133,7 +219,24 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     }
     
     // ----------------------------------------------------
-    // 2. Key Combinations (keyDown & keyUp)
+    // 2. Scroll Wheel Events (scrollWheel)
+    // ----------------------------------------------------
+    if type == .scrollWheel {
+        if hasCtrl != hasCmd {
+            if hasCtrl {
+                flags.remove(.maskControl)
+                flags.insert(.maskCommand)
+            } else if hasCmd {
+                flags.remove(.maskCommand)
+                flags.insert(.maskControl)
+            }
+            event.flags = flags
+        }
+        return Unmanaged.passUnretained(event)
+    }
+    
+    // ----------------------------------------------------
+    // 3. Key Combinations (keyDown & keyUp)
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
         
@@ -273,7 +376,8 @@ print("[dangphuc2470] AnyDesk Remap Daemon starting...")
 
 let eventMask = (1 << CGEventType.keyDown.rawValue) |
                 (1 << CGEventType.keyUp.rawValue) |
-                (1 << CGEventType.flagsChanged.rawValue)
+                (1 << CGEventType.flagsChanged.rawValue) |
+                (1 << CGEventType.scrollWheel.rawValue)
 
 var eventTap: CFMachPort? = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
