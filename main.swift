@@ -147,6 +147,8 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
     }
 }
 
+var isCtrlSpaceActive = false
+
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     // Only modify events originating from AnyDesk processes
     guard isAnyDeskEvent(event) else {
@@ -156,13 +158,6 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // Fix AnyDesk kc=0 bug for all injected key events
     fixAnyDeskZeroKeyCode(event: event, type: type)
 
-    // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
-    // These apps manage their own shortcuts or forward keys to a remote/guest OS,
-    // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
-    if isFrontmostAppQEMU() || isFrontmostAppPassThrough() {
-        return Unmanaged.passUnretained(event)
-    }
-    
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     var flags = event.flags
     
@@ -170,6 +165,44 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     let hasCmd = flags.contains(.maskCommand)
     let hasAlt = flags.contains(.maskAlternate)
     let hasShift = flags.contains(.maskShift)
+
+    // --- Windows Shortcut: Ctrl + Space -> Enter ---
+    if type == .keyDown {
+        if keyCode == 49 && hasCtrl && !hasAlt {
+            isCtrlSpaceActive = true
+            event.setIntegerValueField(.keyboardEventKeycode, value: 36)
+            flags.remove(.maskControl)
+            flags.remove(.maskCommand)
+            if !hasShift {
+                flags.remove(.maskShift)
+            }
+            event.flags = flags
+            var enterChar: [UniChar] = [13]
+            event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &enterChar)
+            return Unmanaged.passUnretained(event)
+        }
+    } else if type == .keyUp {
+        if isCtrlSpaceActive && (keyCode == 49 || keyCode == 36) {
+            isCtrlSpaceActive = false
+            event.setIntegerValueField(.keyboardEventKeycode, value: 36)
+            flags.remove(.maskControl)
+            flags.remove(.maskCommand)
+            if !hasShift {
+                flags.remove(.maskShift)
+            }
+            event.flags = flags
+            var enterChar: [UniChar] = [13]
+            event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &enterChar)
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
+    // These apps manage their own shortcuts or forward keys to a remote/guest OS,
+    // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
+    if isFrontmostAppQEMU() || isFrontmostAppPassThrough() {
+        return Unmanaged.passUnretained(event)
+    }
     
     // ----------------------------------------------------
     // 1. Modifier Key State Changes (flagsChanged)
