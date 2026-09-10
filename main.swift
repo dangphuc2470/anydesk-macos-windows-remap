@@ -148,9 +148,41 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
 }
 
 var isCtrlSpaceActive = false
+var isShiftHeld = false
+var isAltHeld = false
+var isCmdHeld = false
+var isCtrlHeld = false
 
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-    // Only modify events originating from AnyDesk processes
+    // ----------------------------------------------------
+    // Mouse Events: AnyDesk synthesizes mouse events with sourcePID=0 and flags=0,
+    // which strips keyboard modifiers (Shift, Option, Command, Control).
+    // This breaks Shift+click (range select) and Cmd/Ctrl+click (multi-select).
+    // We attach the active modifier flags to the mouse event.
+    // ----------------------------------------------------
+    let isMouseEvent = (type == .leftMouseDown || type == .leftMouseUp ||
+                        type == .leftMouseDragged || type == .rightMouseDown ||
+                        type == .rightMouseUp || type == .rightMouseDragged ||
+                        type == .otherMouseDown || type == .otherMouseUp)
+    if isMouseEvent {
+        let sessionFlags = CGEventSource.flagsState(.combinedSessionState)
+        let hasShift = isShiftHeld || sessionFlags.contains(.maskShift)
+        let hasAlt = isAltHeld || sessionFlags.contains(.maskAlternate)
+        let hasCmd = isCmdHeld || sessionFlags.contains(.maskCommand)
+        let hasCtrl = isCtrlHeld || sessionFlags.contains(.maskControl)
+        
+        if hasShift || hasAlt || hasCmd || hasCtrl {
+            var mFlags = event.flags
+            if hasShift { mFlags.insert(.maskShift) }
+            if hasAlt { mFlags.insert(.maskAlternate) }
+            if hasCmd { mFlags.insert(.maskCommand) }
+            if hasCtrl { mFlags.insert(.maskControl) }
+            event.flags = mFlags
+        }
+        return Unmanaged.passUnretained(event)
+    }
+
+    // Only modify keyboard events originating from AnyDesk processes
     guard isAnyDeskEvent(event) else {
         return Unmanaged.passUnretained(event)
     }
@@ -197,10 +229,16 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         }
     }
 
+    // Update modifier states from incoming keyboard events
+    isShiftHeld = hasShift
+    isAltHeld = hasAlt
+
     // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
     // These apps manage their own shortcuts or forward keys to a remote/guest OS,
     // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
     if isFrontmostAppQEMU() || isFrontmostAppPassThrough() {
+        isCmdHeld = hasCmd
+        isCtrlHeld = hasCtrl
         return Unmanaged.passUnretained(event)
     }
     
@@ -248,6 +286,10 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
             }
             event.flags = flags
         }
+        isShiftHeld = event.flags.contains(.maskShift)
+        isAltHeld = event.flags.contains(.maskAlternate)
+        isCmdHeld = event.flags.contains(.maskCommand)
+        isCtrlHeld = event.flags.contains(.maskControl)
         return Unmanaged.passUnretained(event)
     }
     
@@ -407,10 +449,16 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
 
 print("[dangphuc2470] AnyDesk Remap Daemon starting...")
 
-let eventMask = (1 << CGEventType.keyDown.rawValue) |
-                (1 << CGEventType.keyUp.rawValue) |
-                (1 << CGEventType.flagsChanged.rawValue) |
-                (1 << CGEventType.scrollWheel.rawValue)
+let eventTypes: [CGEventType] = [
+    .keyDown, .keyUp, .flagsChanged, .scrollWheel,
+    .leftMouseDown, .leftMouseUp, .leftMouseDragged,
+    .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+    .otherMouseDown, .otherMouseUp
+]
+var eventMask: UInt64 = 0
+for evType in eventTypes {
+    eventMask |= (1 << UInt64(evType.rawValue))
+}
 
 var eventTap: CFMachPort? = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
