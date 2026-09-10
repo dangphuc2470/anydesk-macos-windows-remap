@@ -152,31 +152,38 @@ var isShiftHeld = false
 var isAltHeld = false
 var isCmdHeld = false
 var isCtrlHeld = false
+var eventTap: CFMachPort? = nil
 
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    // Re-enable tap if disabled by system timeout
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+        return Unmanaged.passUnretained(event)
+    }
+
     // ----------------------------------------------------
-    // Mouse Events: AnyDesk synthesizes mouse events with sourcePID=0 and flags=0,
+    // Mouse Click Events: AnyDesk synthesizes mouse events with flags=0,
     // which strips keyboard modifiers (Shift, Option, Command, Control).
-    // This breaks Shift+click (range select) and Cmd/Ctrl+click (multi-select).
-    // We attach the active modifier flags to the mouse event.
+    // This breaks Shift+click (range text select) and Cmd/Ctrl+click.
+    // We attach active modifiers to mouse clicks.
     // ----------------------------------------------------
-    let isMouseEvent = (type == .leftMouseDown || type == .leftMouseUp ||
-                        type == .leftMouseDragged || type == .rightMouseDown ||
-                        type == .rightMouseUp || type == .rightMouseDragged ||
-                        type == .otherMouseDown || type == .otherMouseUp)
-    if isMouseEvent {
+    let isMouseClick = (type == .leftMouseDown || type == .leftMouseUp ||
+                        type == .rightMouseDown || type == .rightMouseUp)
+    if isMouseClick {
         let sessionFlags = CGEventSource.flagsState(.combinedSessionState)
-        let hasShift = isShiftHeld || sessionFlags.contains(.maskShift)
-        let hasAlt = isAltHeld || sessionFlags.contains(.maskAlternate)
-        let hasCmd = isCmdHeld || sessionFlags.contains(.maskCommand)
-        let hasCtrl = isCtrlHeld || sessionFlags.contains(.maskControl)
+        let needShift = isShiftHeld || sessionFlags.contains(.maskShift)
+        let needCmd = isCmdHeld || sessionFlags.contains(.maskCommand)
+        let needAlt = isAltHeld || sessionFlags.contains(.maskAlternate)
+        let needCtrl = isCtrlHeld || sessionFlags.contains(.maskControl)
         
-        if hasShift || hasAlt || hasCmd || hasCtrl {
+        if needShift || needCmd || needAlt || needCtrl {
             var mFlags = event.flags
-            if hasShift { mFlags.insert(.maskShift) }
-            if hasAlt { mFlags.insert(.maskAlternate) }
-            if hasCmd { mFlags.insert(.maskCommand) }
-            if hasCtrl { mFlags.insert(.maskControl) }
+            if needShift { mFlags.insert(.maskShift) }
+            if needCmd { mFlags.insert(.maskCommand) }
+            if needAlt { mFlags.insert(.maskAlternate) }
+            if needCtrl { mFlags.insert(.maskControl) }
             event.flags = mFlags
         }
         return Unmanaged.passUnretained(event)
@@ -229,16 +236,10 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         }
     }
 
-    // Update modifier states from incoming keyboard events
-    isShiftHeld = hasShift
-    isAltHeld = hasAlt
-
     // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
     // These apps manage their own shortcuts or forward keys to a remote/guest OS,
     // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
     if isFrontmostAppQEMU() || isFrontmostAppPassThrough() {
-        isCmdHeld = hasCmd
-        isCtrlHeld = hasCtrl
         return Unmanaged.passUnretained(event)
     }
     
@@ -451,16 +452,14 @@ print("[dangphuc2470] AnyDesk Remap Daemon starting...")
 
 let eventTypes: [CGEventType] = [
     .keyDown, .keyUp, .flagsChanged, .scrollWheel,
-    .leftMouseDown, .leftMouseUp, .leftMouseDragged,
-    .rightMouseDown, .rightMouseUp, .rightMouseDragged,
-    .otherMouseDown, .otherMouseUp
+    .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp
 ]
 var eventMask: UInt64 = 0
 for evType in eventTypes {
     eventMask |= (1 << UInt64(evType.rawValue))
 }
 
-var eventTap: CFMachPort? = CGEvent.tapCreate(
+eventTap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
     place: .headInsertEventTap,
     options: .defaultTap,
