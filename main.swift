@@ -236,6 +236,59 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         }
     }
 
+    // ----------------------------------------------------
+    // Global System Shortcuts (Win+Shift+S, Win+Space, Win+L, Win+D, Win+Tab)
+    // These must be handled globally across all apps, including QEMU/Android emulators & VMs!
+    // ----------------------------------------------------
+    if type == .keyDown || type == .keyUp {
+        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
+        if keyCode == 1 && hasCmd && hasShift { // 's' with Cmd + Shift
+            event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
+            flags.insert(.maskControl)
+            flags.insert(.maskCommand)
+            flags.insert(.maskShift)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
+        }
+
+        // --- Windows Shortcut: Win + Space -> macOS Spotlight (Cmd + Space) ---
+        if keyCode == 49 && hasCmd && !hasCtrl && !hasAlt {
+            flags.remove(.maskControl)
+            flags.insert(.maskCommand)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
+        }
+        
+        // --- Windows Shortcut: Win + L / Win + Shift + L / Ctrl + Alt + L -> Lock Screen (Ctrl + Cmd + Q) ---
+        if keyCode == 37 && (hasCmd || (hasCtrl && hasAlt)) { // 'l' with Win, Win+Shift, or Ctrl+Alt
+            event.setIntegerValueField(.keyboardEventKeycode, value: 12) // 'q'
+            flags.insert(.maskControl)
+            flags.insert(.maskCommand)
+            flags.remove(.maskShift)
+            flags.remove(.maskAlternate)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
+        }
+        
+        // --- Windows Shortcut: Win + D -> Show Desktop (F11) ---
+        if keyCode == 2 && hasCmd && !hasCtrl && !hasAlt && !hasShift { // 'd' with Cmd
+            event.setIntegerValueField(.keyboardEventKeycode, value: 103) // F11
+            flags.remove(.maskCommand)
+            flags.remove(.maskControl)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
+        }
+        
+        // --- Windows Shortcut: Win + Tab -> Mission Control (Ctrl + Up Arrow) ---
+        if keyCode == 48 && hasCmd && !hasCtrl && !hasAlt && !hasShift { // Tab with Cmd
+            event.setIntegerValueField(.keyboardEventKeycode, value: 126) // Up Arrow
+            flags.remove(.maskCommand)
+            flags.insert(.maskControl)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
     // --- Pass-through for QEMU/Android emulators, AnyDesk nested sessions, and VMs ---
     // These apps manage their own shortcuts or forward keys to a remote/guest OS,
     // so we bypass Mac shortcut remapping (Cmd <-> Ctrl, etc.) while passing the corrected keyCode.
@@ -315,45 +368,7 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // 3. Key Combinations (keyDown & keyUp)
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
-        
-        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
-        if keyCode == 1 && hasCmd && hasShift { // 's' with Cmd + Shift
-            event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
-            flags.insert(.maskControl)
-            flags.insert(.maskCommand)
-            flags.insert(.maskShift)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
-        
-        // --- Windows Shortcut: Win + L / Win + Shift + L / Ctrl + Alt + L -> Lock Screen (Ctrl + Cmd + Q) ---
-        if keyCode == 37 && (hasCmd || (hasCtrl && hasAlt)) { // 'l' with Win, Win+Shift, or Ctrl+Alt
-            event.setIntegerValueField(.keyboardEventKeycode, value: 12) // 'q'
-            flags.insert(.maskControl)
-            flags.insert(.maskCommand)
-            flags.remove(.maskShift)
-            flags.remove(.maskAlternate)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
-        
-        // --- Windows Shortcut: Win + D -> Show Desktop (F11) ---
-        if keyCode == 2 && hasCmd && !hasCtrl && !hasAlt && !hasShift { // 'd' with Cmd
-            event.setIntegerValueField(.keyboardEventKeycode, value: 103) // F11
-            flags.remove(.maskCommand)
-            flags.remove(.maskControl)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
-        
-        // --- Windows Shortcut: Win + Tab -> Mission Control (Ctrl + Up Arrow) ---
-        if keyCode == 48 && hasCmd && !hasCtrl && !hasAlt && !hasShift { // Tab with Cmd
-            event.setIntegerValueField(.keyboardEventKeycode, value: 126) // Up Arrow
-            flags.remove(.maskCommand)
-            flags.insert(.maskControl)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
+
         
         // --- Windows Shortcut: Ctrl + Backspace -> Option + Backspace (Delete word backward) ---
         if keyCode == 51 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // Backspace with Ctrl
