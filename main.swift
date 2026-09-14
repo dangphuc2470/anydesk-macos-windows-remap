@@ -251,10 +251,10 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
             return Unmanaged.passUnretained(event)
         }
 
-        // --- Windows Shortcut: Win + Space -> macOS Spotlight (Cmd + Space) ---
+        // --- Windows Shortcut: Win + Space -> LaunchOS (^Space / Control + Space) ---
         if keyCode == 49 && hasCmd && !hasCtrl && !hasAlt {
-            flags.remove(.maskControl)
-            flags.insert(.maskCommand)
+            flags.remove(.maskCommand)
+            flags.insert(.maskControl)
             event.flags = flags
             return Unmanaged.passUnretained(event)
         }
@@ -463,7 +463,7 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     return Unmanaged.passUnretained(event)
 }
 
-print("[dangphuc2470] AnyDesk Remap Daemon starting...")
+print("[phucdnh] AnyDesk Remap Daemon starting...")
 
 let eventTypes: [CGEventType] = [
     .keyDown, .keyUp, .flagsChanged, .scrollWheel,
@@ -474,28 +474,39 @@ for evType in eventTypes {
     eventMask |= (1 << UInt64(evType.rawValue))
 }
 
-eventTap = CGEvent.tapCreate(
-    tap: .cgSessionEventTap,
-    place: .headInsertEventTap,
-    options: .defaultTap,
-    eventsOfInterest: CGEventMask(eventMask),
-    callback: eventCallback,
-    userInfo: nil
-)
-
-if eventTap == nil {
+// Retry loop: On system boot, Aqua session and Accessibility TCC can take several seconds to become ready.
+var retries = 0
+let maxRetries = 15
+while eventTap == nil && retries < maxRetries {
     eventTap = CGEvent.tapCreate(
-        tap: .cghidEventTap,
+        tap: .cgSessionEventTap,
         place: .headInsertEventTap,
         options: .defaultTap,
         eventsOfInterest: CGEventMask(eventMask),
         callback: eventCallback,
         userInfo: nil
     )
+
+    if eventTap == nil {
+        eventTap = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: eventCallback,
+            userInfo: nil
+        )
+    }
+
+    if eventTap == nil {
+        retries += 1
+        print("[phucdnh] Waiting for GUI session / Accessibility... attempt \(retries)/\(maxRetries)")
+        Thread.sleep(forTimeInterval: 1.0)
+    }
 }
 
 guard let tap = eventTap else {
-    print("[dangphuc2470] ERROR: Failed to create CGEventTap. Please grant Accessibility permissions.")
+    print("[phucdnh] ERROR: Failed to create CGEventTap after \(maxRetries) attempts. Please grant Accessibility permissions.")
     exit(1)
 }
 
@@ -503,5 +514,5 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
-print("[dangphuc2470] AnyDesk Remap Daemon is ACTIVE. Intercepting all AnyDesk processes safely.")
+print("[phucdnh] AnyDesk Remap Daemon is ACTIVE. Intercepting all AnyDesk processes safely.")
 CFRunLoopRun()

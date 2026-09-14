@@ -3,23 +3,29 @@ set -e
 
 # ==============================================================================
 # anydesk-macos-windows-remap Restart Script
-# Author: dangphuc2470
+# Author: phucdnh
 # ==============================================================================
 
 echo "==> Restarting anydesk-macos-windows-remap daemon..."
 
-# Reload LaunchAgents if present
-for PLIST in "$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist" "$HOME/Library/LaunchAgents/com.phucdnh.anydesk-remap.plist"; do
-    if [ -f "$PLIST" ]; then
-        launchctl unload "$PLIST" 2>/dev/null || true
-        launchctl load "$PLIST" 2>/dev/null || true
-        echo "==> Reloaded $PLIST"
-    fi
-done
+# Clean up legacy LaunchAgent
+LEGACY_PLIST="$HOME/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist"
+if [ -f "$LEGACY_PLIST" ]; then
+    launchctl unload "$LEGACY_PLIST" 2>/dev/null || true
+    rm -f "$LEGACY_PLIST"
+fi
+
+# Reload phucdnh LaunchAgent
+PLIST="$HOME/Library/LaunchAgents/com.phucdnh.anydesk-remap.plist"
+if [ -f "$PLIST" ]; then
+    launchctl unload "$PLIST" 2>/dev/null || true
+    launchctl load "$PLIST" 2>/dev/null || true
+    echo "==> Reloaded $PLIST"
+fi
 
 # Kill running processes so launchd KeepAlive restarts with fresh binary
 killall anydesk_remap phucdnh_anydesk_remap 2>/dev/null || true
 
-sleep 0.8
+sleep 1.2
 echo "==> Active Daemon Status:"
-ps aux | grep -E "anydesk_remap|phucdnh_anydesk_remap" | grep -v grep || echo "Warning: Daemon not currently detected in process list."
+ps aux | grep -E "phucdnh_anydesk_remap" | grep -v grep || echo "Warning: Daemon not currently detected in process list."

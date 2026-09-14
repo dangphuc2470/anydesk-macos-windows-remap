@@ -3,15 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.dangphuc2470.anydesk-remap</string>
+    <string>com.phucdnh.anydesk-remap</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{{INSTALL_DIR}}/anydesk_remap</string>
+        <string>{{INSTALL_DIR}}/phucdnh_anydesk_remap</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>ProcessType</key>
+    <string>Interactive</string>
     <key>StandardOutPath</key>
     <string>{{INSTALL_DIR}}/logs/daemon.log</string>
     <key>StandardErrorPath</key>
