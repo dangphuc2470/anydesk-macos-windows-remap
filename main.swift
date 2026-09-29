@@ -371,16 +371,18 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
 
         
         // --- Windows Shortcut: Ctrl + Backspace -> Option + Backspace (Delete word backward) ---
-        if keyCode == 51 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // Backspace with Ctrl
+        if keyCode == 51 && (hasCtrl || hasCmd) && !hasAlt && !hasShift { // Backspace with Ctrl
             flags.remove(.maskControl)
+            flags.remove(.maskCommand)
             flags.insert(.maskAlternate) // Option
             event.flags = flags
             return Unmanaged.passUnretained(event)
         }
         
         // --- Windows Shortcut: Ctrl + Delete -> Option + Delete (Delete word forward) ---
-        if keyCode == 117 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // Forward Delete with Ctrl
+        if keyCode == 117 && (hasCtrl || hasCmd) && !hasAlt && !hasShift { // Forward Delete with Ctrl
             flags.remove(.maskControl)
+            flags.remove(.maskCommand)
             flags.insert(.maskAlternate) // Option
             event.flags = flags
             return Unmanaged.passUnretained(event)
@@ -394,32 +396,9 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
             return Unmanaged.passUnretained(event)
         }
         
-        // --- Windows Shortcut: Ctrl + Left/Right Arrow -> Option + Left/Right Arrow (Move word by word) ---
-        if (keyCode == 123 || keyCode == 124) && hasCtrl && !hasCmd && !hasAlt && !hasShift {
-            flags.remove(.maskControl)
-            flags.insert(.maskAlternate) // Option
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
-        
-        // --- Windows Shortcut: Ctrl + Shift + Left/Right Arrow -> Option + Shift + Left/Right Arrow (Select word by word) ---
-        if (keyCode == 123 || keyCode == 124) && hasCtrl && hasShift && !hasCmd && !hasAlt {
-            flags.remove(.maskControl)
-            flags.insert(.maskAlternate) // Option
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
-        
-        // --- Windows Shortcut: Option + Shift + Left/Right Arrow -> Cmd + Shift + Left/Right Arrow (Select line by line) ---
-        if (keyCode == 123 || keyCode == 124) && hasAlt && hasShift && !hasCtrl && !hasCmd {
-            flags.remove(.maskAlternate)
-            flags.insert(.maskCommand)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
-        }
         
         // --- Windows Shortcut: Ctrl + J -> Option + Cmd + L (Downloads) ---
-        if keyCode == 38 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // 'j' with Ctrl
+        if keyCode == 38 && (hasCtrl || hasCmd) && !hasAlt && !hasShift { // 'j' with Ctrl
             event.setIntegerValueField(.keyboardEventKeycode, value: 37) // 'l'
             flags.remove(.maskControl)
             flags.insert(.maskAlternate)
@@ -429,7 +408,7 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         }
         
         // --- Windows Shortcut: Ctrl + H -> Replace / History (Avoid hiding app) ---
-        if keyCode == 4 && hasCtrl && !hasCmd && !hasAlt && !hasShift { // 'h' with Ctrl
+        if keyCode == 4 && (hasCtrl || hasCmd) && !hasAlt && !hasShift { // 'h' with Ctrl
             let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
             if frontmostID.contains("edgemac") || frontmostID.contains("Chrome") || frontmostID.contains("Safari") || frontmostID.contains("Browser") {
                 // Browser History (Cmd + Y)

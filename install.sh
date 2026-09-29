@@ -30,11 +30,15 @@ echo "==> Compiling Swift daemon..."
 swiftc -O -o "$INSTALL_DIR/phucdnh_anydesk_remap" main.swift
 
 # Sign with Apple Development cert if present to preserve Accessibility permissions across builds
-SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | grep -v "REVOKED" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> Signing binary with: $SIGN_IDENTITY"
     codesign -s "$SIGN_IDENTITY" --force "$INSTALL_DIR/phucdnh_anydesk_remap"
+else
+    echo "==> Signing binary with ad-hoc signature..."
+    codesign -s - --force "$INSTALL_DIR/phucdnh_anydesk_remap"
 fi
+xattr -cr "$INSTALL_DIR/phucdnh_anydesk_remap"
 
 # Copy main.swift for reference
 cp main.swift "$INSTALL_DIR/main.swift"
