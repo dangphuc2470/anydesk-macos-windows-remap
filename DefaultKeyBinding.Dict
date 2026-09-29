@@ -1,0 +1,10 @@
+{
+"@\UF702"  = "moveWordBackward:";                       /* Cmd + Left Arrow -> Jump word left */
+"@\UF703"  = "moveWordForward:";                        /* Cmd + Right Arrow -> Jump word right */
+"@$\UF702" = "moveWordBackwardAndModifySelection:";      /* Cmd + Shift + Left Arrow -> Select word left */
+"@$\UF703" = "moveWordForwardAndModifySelection:";     /* Cmd + Shift + Right Arrow -> Select word right */
+"~\UF702"  = "moveToBeginningOfLine:";                  /* Option + Left Arrow -> Jump to line start */
+"~\UF703"  = "moveToEndOfLine:";                        /* Option + Right Arrow -> Jump to line end */
+"~$\UF702" = "moveToBeginningOfLineAndModifySelection:"; /* Option + Shift + Left Arrow */
+"~$\UF703" = "moveToEndOfLineAndModifySelection:";      /* Option + Shift + Right Arrow */
+}
