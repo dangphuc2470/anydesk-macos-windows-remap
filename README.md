@@ -69,7 +69,7 @@ Because macOS protects input event streams, grant Accessibility permission once:
 1. Open **System Settings** -> **Privacy & Security** -> **Accessibility**.
 2. Click **`+`** (or toggle on) and add:
    ```text
-   ~/.config/anydesk-remap/anydesk_remap
+   ~/.config/phucdnh-anydesk-remap/phucdnh_anydesk_remap
    ```
 3. Toggle the switch to **ON**.
 
@@ -94,15 +94,15 @@ launchctl load ~/Library/LaunchAgents/com.dangphuc2470.anydesk-remap.plist
 ### Check Status & View Logs
 * Check if the process is running:
   ```bash
-  ps aux | grep anydesk_remap
+  ps aux | grep phucdnh_anydesk_remap
   ```
 * View live output logs:
   ```bash
-  tail -f ~/.config/anydesk-remap/logs/daemon.log
+  tail -f ~/.config/phucdnh-anydesk-remap/logs/daemon.log
   ```
 * View error logs:
   ```bash
-  tail -f ~/.config/anydesk-remap/logs/daemon.error.log
+  tail -f ~/.config/phucdnh-anydesk-remap/logs/daemon.error.log
   ```
 
 ---

@@ -12,6 +12,9 @@ import CoreGraphics
 import AppKit
 import Darwin
 
+// Ensure unbuffered stdout so launchd logs write in real-time
+setbuf(__stdoutp, nil)
+setbuf(__stderrp, nil)
 
 func getAllAnyDeskPIDs() -> Set<pid_t> {
     var pids = Set<pid_t>()
@@ -443,6 +446,10 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
 }
 
 print("[phucdnh] AnyDesk Remap Daemon starting...")
+
+let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+let isTrusted = AXIsProcessTrustedWithOptions(options)
+print("[phucdnh] Accessibility trusted status: \(isTrusted)")
 
 let eventTypes: [CGEventType] = [
     .keyDown, .keyUp, .flagsChanged, .scrollWheel,
