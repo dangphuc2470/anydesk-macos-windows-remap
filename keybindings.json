@@ -1,5 +1,9 @@
 [
     {
+        "key": "shift shift",
+        "command": "-workbench.action.quickOpen"
+    },
+    {
         "key": "alt+left",
         "command": "-cursorWordLeft",
         "when": "textInputFocus"

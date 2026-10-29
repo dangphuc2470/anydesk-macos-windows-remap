@@ -249,11 +249,20 @@ func takeFullScreenScreenshot(toFile: Bool) {
                let rep = NSBitmapImageRep(data: tiff),
                let pngData = rep.representation(using: .png, properties: [:]) {
                 try? pngData.write(to: URL(fileURLWithPath: destPath))
+                print("[phucdnh] Saved multi-monitor screenshot to: \(destPath)")
             }
         } else {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.writeObjects([composite])
+            if let tiff = composite.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let pngData = rep.representation(using: .png, properties: [:]) {
+                pasteboard.setData(pngData, forType: .png)
+                pasteboard.setData(tiff, forType: .tiff)
+            } else {
+                pasteboard.writeObjects([composite])
+            }
+            print("[phucdnh] Copied multi-monitor screenshot to clipboard")
         }
 
         // Play native camera shutter sound
@@ -323,6 +332,11 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     let hasAlt = flags.contains(.maskAlternate)
     let hasShift = flags.contains(.maskShift)
 
+    if type == .keyDown {
+        let flStr = String(flags.rawValue, radix: 16)
+        print("[phucdnh-key] keyDown kc=\(keyCode) flags=0x\(flStr) cmd=\(hasCmd) ctrl=\(hasCtrl) shift=\(hasShift) alt=\(hasAlt)")
+    }
+
     // --- Windows Shortcut: Ctrl + Space -> Enter ---
     if type == .keyDown {
         if keyCode == 49 && hasCtrl && !hasAlt {
@@ -375,13 +389,14 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
             return nil
         }
 
-        // --- Windows Shortcut: PrintScreen (F13 / keyCode 105) ---
+        // --- Windows Shortcut: PrintScreen (F13: 105, F14: 107, F15: 113) ---
         // PrtScn -> Fullscreen to Clipboard
         // Win + PrtScn -> Fullscreen to File (~/Pictures/Screenshot or Desktop)
-        if keyCode == 105 {
+        if keyCode == 105 || keyCode == 107 || keyCode == 113 {
             if type == .keyDown && !isScreenCaptureRunning {
                 isScreenCaptureRunning = true
-                let isWinPrtScn = hasCmd
+                let isWinPrtScn = hasCmd || hasCtrl || isCmdHeld || isCtrlHeld
+                print("[phucdnh] PrintScreen intercepted (kc=\(keyCode), isWinPrtScn=\(isWinPrtScn))")
                 takeFullScreenScreenshot(toFile: isWinPrtScn)
             }
             return nil
