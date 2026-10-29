@@ -7,4 +7,6 @@
 "~\UF703"  = "moveToEndOfLine:";                        /* Option + Right Arrow -> Jump to line end */
 "~$\UF702" = "moveToBeginningOfLineAndModifySelection:"; /* Option + Shift + Left Arrow */
 "~$\UF703" = "moveToEndOfLineAndModifySelection:";      /* Option + Shift + Right Arrow */
+"@\U007F"  = "deleteWordBackward:";                       /* Cmd + Backspace (Ctrl+Bksp) -> Delete word backward */
+"@\UF728"  = "deleteWordForward:";                        /* Cmd + Delete (Ctrl+Del) -> Delete word forward */
 }

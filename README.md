@@ -42,7 +42,9 @@ When controlling macOS from Windows via AnyDesk:
 | `Ctrl + Backspace` | `Option + Backspace` | Delete word backward |
 | `Ctrl + Delete` | `Option + Delete` | Delete word forward |
 | `Alt + Backspace` | `Cmd + Backspace` | Delete line to start |
-| `Win + Shift + S` | `Cmd + Shift + 4` | Interactive Screenshot to Clipboard |
+| `Win + Shift + S` | Native Area Selection | Interactive Area Screenshot to Clipboard |
+| `PrintScreen` (PrtScn) | Native Fullscreen | Full Screen Screenshot to Clipboard |
+| `Win + PrintScreen` | Native Fullscreen to File | Full Screen Screenshot saved to File (`~/Pictures/Screenshot` or `Desktop`) |
 | `Win + Shift + L` / `Ctrl + Alt + L` / `Win + L` | `Ctrl + Cmd + Q` | Lock macOS Screen (Bypasses Windows Host Lock) |
 | `Win + D` | `F11` | Show Desktop |
 | `Win + Tab` | `Ctrl + Up Arrow` | Mission Control |

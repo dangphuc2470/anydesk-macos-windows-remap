@@ -152,6 +152,37 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
 
 var isCtrlSpaceActive = false
 var isScreenCaptureRunning = false
+
+func getScreenshotDirectory() -> String {
+    if let loc = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location"), !loc.isEmpty {
+        let expanded = NSString(string: loc).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: expanded) {
+            return expanded
+        }
+    }
+    return NSString(string: "~/Desktop").expandingTildeInPath
+}
+
+func takeFullScreenScreenshot(toFile: Bool) {
+    DispatchQueue.global().async {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        if toFile {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            let dateStr = formatter.string(from: Date())
+            let destDir = getScreenshotDirectory()
+            let destPath = "\(destDir)/Screenshot \(dateStr).png"
+            proc.arguments = [destPath]
+        } else {
+            proc.arguments = ["-c"]
+        }
+        try? proc.run()
+        proc.waitUntilExit()
+        isScreenCaptureRunning = false
+    }
+}
+
 var isShiftHeld = false
 var isAltHeld = false
 var isCmdHeld = false
@@ -257,6 +288,18 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
                     proc.waitUntilExit()
                     isScreenCaptureRunning = false
                 }
+            }
+            return nil
+        }
+
+        // --- Windows Shortcut: PrintScreen (F13 / keyCode 105) ---
+        // PrtScn -> Fullscreen to Clipboard
+        // Win + PrtScn -> Fullscreen to File (~/Pictures/Screenshot or Desktop)
+        if keyCode == 105 {
+            if type == .keyDown && !isScreenCaptureRunning {
+                isScreenCaptureRunning = true
+                let isWinPrtScn = hasCmd
+                takeFullScreenScreenshot(toFile: isWinPrtScn)
             }
             return nil
         }
