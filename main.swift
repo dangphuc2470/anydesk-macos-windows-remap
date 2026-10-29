@@ -151,135 +151,16 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
 }
 
 var isCtrlSpaceActive = false
-var isScreenCaptureRunning = false
-
-func getScreenshotDirectory() -> String {
-    if let loc = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location"), !loc.isEmpty {
-        let expanded = NSString(string: loc).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expanded) {
-            return expanded
-        }
-    }
-    return NSString(string: "~/Desktop").expandingTildeInPath
-}
-
-func takeFullScreenScreenshot(toFile: Bool) {
-    DispatchQueue.global().async {
-        let screens = NSScreen.screens
-        if screens.count <= 1 {
-            // Single monitor: use native screencapture directly
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            if toFile {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-                let dateStr = formatter.string(from: Date())
-                let destDir = getScreenshotDirectory()
-                let destPath = "\(destDir)/Screenshot \(dateStr).png"
-                proc.arguments = [destPath]
-            } else {
-                proc.arguments = ["-c"]
-            }
-            try? proc.run()
-            proc.waitUntilExit()
-            isScreenCaptureRunning = false
-            return
-        }
-
-        // Multi-monitor: capture all displays and stitch them into a single panoramic canvas (Windows style)
-        var minX = CGFloat.infinity
-        var minY = CGFloat.infinity
-        var maxX = -CGFloat.infinity
-        var maxY = -CGFloat.infinity
-
-        for s in screens {
-            minX = min(minX, s.frame.minX)
-            minY = min(minY, s.frame.minY)
-            maxX = max(maxX, s.frame.maxX)
-            maxY = max(maxY, s.frame.maxY)
-        }
-
-        let totalSize = NSSize(width: maxX - minX, height: maxY - minY)
-        guard totalSize.width > 0 && totalSize.height > 0 else {
-            isScreenCaptureRunning = false
-            return
-        }
-
-        let tempPrefix = "/tmp/phucdnh_sc_\(ProcessInfo.processInfo.globallyUniqueString)"
-        var tempFiles = [String]()
-
-        for i in 1...screens.count {
-            let tempPath = "\(tempPrefix)_d\(i).png"
-            tempFiles.append(tempPath)
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            p.arguments = ["-x", "-D", "\(i)", tempPath]
-            try? p.run()
-            p.waitUntilExit()
-        }
-
-        let composite = NSImage(size: totalSize)
-        composite.lockFocus()
-        for (i, s) in screens.enumerated() {
-            if i < tempFiles.count, let img = NSImage(contentsOfFile: tempFiles[i]) {
-                let drawRect = NSRect(
-                    x: s.frame.origin.x - minX,
-                    y: s.frame.origin.y - minY,
-                    width: s.frame.width,
-                    height: s.frame.height
-                )
-                img.draw(in: drawRect)
-            }
-        }
-        composite.unlockFocus()
-
-        // Clean up temp files
-        for f in tempFiles {
-            try? FileManager.default.removeItem(atPath: f)
-        }
-
-        if toFile {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            let dateStr = formatter.string(from: Date())
-            let destDir = getScreenshotDirectory()
-            let destPath = "\(destDir)/Screenshot \(dateStr).png"
-
-            if let tiff = composite.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let pngData = rep.representation(using: .png, properties: [:]) {
-                try? pngData.write(to: URL(fileURLWithPath: destPath))
-                print("[phucdnh] Saved multi-monitor screenshot to: \(destPath)")
-            }
-        } else {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            if let tiff = composite.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let pngData = rep.representation(using: .png, properties: [:]) {
-                pasteboard.setData(pngData, forType: .png)
-                pasteboard.setData(tiff, forType: .tiff)
-            } else {
-                pasteboard.writeObjects([composite])
-            }
-            print("[phucdnh] Copied multi-monitor screenshot to clipboard")
-        }
-
-        // Play native camera shutter sound
-        let soundProc = Process()
-        soundProc.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
-        soundProc.arguments = ["/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"]
-        try? soundProc.run()
-
-        isScreenCaptureRunning = false
-    }
-}
 
 var isShiftHeld = false
 var isAltHeld = false
 var isCmdHeld = false
 var isCtrlHeld = false
 var eventTap: CFMachPort? = nil
+
+// Shift Debounce state to eliminate AnyDesk network jitter/packet-drop while holding Shift
+var pendingShiftUpEvent: CGEvent? = nil
+var shiftDebounceWorkItem: DispatchWorkItem? = nil
 
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     // Re-enable tap if disabled by system timeout
@@ -321,6 +202,19 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         return Unmanaged.passUnretained(event)
     }
 
+    // Flush pending Shift UP immediately if user typed a key without Shift
+    if type == .keyDown {
+        if let workItem = shiftDebounceWorkItem, let upEvent = pendingShiftUpEvent {
+            if !event.flags.contains(.maskShift) {
+                workItem.cancel()
+                shiftDebounceWorkItem = nil
+                pendingShiftUpEvent = nil
+                isShiftHeld = false
+                upEvent.post(tap: .cghidEventTap)
+            }
+        }
+    }
+
     // Fix AnyDesk kc=0 bug for all injected key events
     fixAnyDeskZeroKeyCode(event: event, type: type)
 
@@ -331,11 +225,6 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     let hasCmd = flags.contains(.maskCommand)
     let hasAlt = flags.contains(.maskAlternate)
     let hasShift = flags.contains(.maskShift)
-
-    if type == .keyDown {
-        let flStr = String(flags.rawValue, radix: 16)
-        print("[phucdnh-key] keyDown kc=\(keyCode) flags=0x\(flStr) cmd=\(hasCmd) ctrl=\(hasCtrl) shift=\(hasShift) alt=\(hasAlt)")
-    }
 
     // --- Windows Shortcut: Ctrl + Space -> Enter ---
     if type == .keyDown {
@@ -369,37 +258,39 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     }
 
     // ----------------------------------------------------
-    // Global System Shortcuts (Win+Shift+S, Win+Space, Win+L, Win+D, Win+Tab)
+    // Global System Shortcuts (Win+Shift+S, Win+Space, Win+L, Win+D, Win+Tab, PrintScreen)
     // These must be handled globally across all apps, including QEMU/Android emulators & VMs!
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
-        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard ---
-        if keyCode == 1 && hasCmd && hasShift && !hasCtrl { // 's' with Win (Cmd) + Shift
-            if type == .keyDown && !isScreenCaptureRunning {
-                isScreenCaptureRunning = true
-                DispatchQueue.global().async {
-                    let proc = Process()
-                    proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-                    proc.arguments = ["-i", "-c"]
-                    try? proc.run()
-                    proc.waitUntilExit()
-                    isScreenCaptureRunning = false
-                }
-            }
-            return nil
+        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
+        if keyCode == 1 && hasShift && (hasCmd || isCmdHeld || hasCtrl) { // 's' with Win (Cmd) + Shift
+            event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
+            flags.insert(.maskControl)
+            flags.insert(.maskCommand)
+            flags.insert(.maskShift)
+            flags.remove(.maskAlternate)
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
         }
 
         // --- Windows Shortcut: PrintScreen (F13: 105, F14: 107, F15: 113) ---
-        // PrtScn -> Fullscreen to Clipboard
-        // Win + PrtScn -> Fullscreen to File (~/Pictures/Screenshot or Desktop)
+        // PrtScn -> macOS Fullscreen to Clipboard (Ctrl + Cmd + Shift + 3)
+        // Win + PrtScn -> macOS Fullscreen to File (Cmd + Shift + 3)
         if keyCode == 105 || keyCode == 107 || keyCode == 113 {
-            if type == .keyDown && !isScreenCaptureRunning {
-                isScreenCaptureRunning = true
-                let isWinPrtScn = hasCmd || hasCtrl || isCmdHeld || isCtrlHeld
-                print("[phucdnh] PrintScreen intercepted (kc=\(keyCode), isWinPrtScn=\(isWinPrtScn))")
-                takeFullScreenScreenshot(toFile: isWinPrtScn)
+            let isWinPrtScn = hasCmd || hasCtrl || isCmdHeld || isCtrlHeld
+            event.setIntegerValueField(.keyboardEventKeycode, value: 20) // '3'
+            flags.insert(.maskCommand)
+            flags.insert(.maskShift)
+            flags.remove(.maskAlternate)
+            if isWinPrtScn {
+                // To file: Cmd + Shift + 3
+                flags.remove(.maskControl)
+            } else {
+                // To clipboard: Ctrl + Cmd + Shift + 3
+                flags.insert(.maskControl)
             }
-            return nil
+            event.flags = flags
+            return Unmanaged.passUnretained(event)
         }
 
         // --- Windows Shortcut: Win + Space -> LaunchOS (^Space / Control + Space) ---
@@ -451,6 +342,44 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // 1. Modifier Key State Changes (flagsChanged)
     // ----------------------------------------------------
     if type == .flagsChanged {
+        // Debounce Left Shift (56) and Right Shift (60) to eliminate AnyDesk network jitter
+        if keyCode == 56 || keyCode == 60 {
+            let isShiftNow = event.flags.contains(.maskShift)
+            if isShiftNow {
+                // Shift DOWN
+                if let workItem = shiftDebounceWorkItem {
+                    // Canceled pending Shift UP -> user was holding Shift and network stuttered!
+                    workItem.cancel()
+                    shiftDebounceWorkItem = nil
+                    pendingShiftUpEvent = nil
+                    isShiftHeld = true
+                    return nil // Swallow this false-recovery DOWN event
+                }
+                isShiftHeld = true
+            } else {
+                // Shift UP
+                if isShiftHeld {
+                    guard let copiedEvent = event.copy() else {
+                        isShiftHeld = false
+                        return Unmanaged.passUnretained(event)
+                    }
+                    pendingShiftUpEvent = copiedEvent
+                    let workItem = DispatchWorkItem {
+                        if let upEvent = pendingShiftUpEvent {
+                            pendingShiftUpEvent = nil
+                            shiftDebounceWorkItem = nil
+                            isShiftHeld = false
+                            upEvent.post(tap: .cghidEventTap)
+                        }
+                    }
+                    shiftDebounceWorkItem = workItem
+                    // 65ms threshold: seamlessly bridges AnyDesk packet loss without perceptible latency
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(65), execute: workItem)
+                    return nil
+                }
+            }
+        }
+
         // Swap Left Control (59) <-> Left Command (55)
         if keyCode == 59 {
             event.setIntegerValueField(.keyboardEventKeycode, value: 55)
