@@ -151,6 +151,7 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
 }
 
 var isCtrlSpaceActive = false
+var isScreenCaptureRunning = false
 var isShiftHeld = false
 var isAltHeld = false
 var isCmdHeld = false
@@ -244,14 +245,20 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // These must be handled globally across all apps, including QEMU/Android emulators & VMs!
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
-        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
-        if keyCode == 1 && hasCmd && hasShift { // 's' with Cmd + Shift
-            event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
-            flags.insert(.maskControl)
-            flags.insert(.maskCommand)
-            flags.insert(.maskShift)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
+        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard ---
+        if keyCode == 1 && hasCmd && hasShift && !hasCtrl { // 's' with Win (Cmd) + Shift
+            if type == .keyDown && !isScreenCaptureRunning {
+                isScreenCaptureRunning = true
+                DispatchQueue.global().async {
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    proc.arguments = ["-i", "-c"]
+                    try? proc.run()
+                    proc.waitUntilExit()
+                    isScreenCaptureRunning = false
+                }
+            }
+            return nil
         }
 
         // --- Windows Shortcut: Win + Space -> LaunchOS (^Space / Control + Space) ---
