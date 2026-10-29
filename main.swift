@@ -151,6 +151,21 @@ func fixAnyDeskZeroKeyCode(event: CGEvent, type: CGEventType) {
 }
 
 var isCtrlSpaceActive = false
+var isScreenCaptureRunning = false
+
+func getScreenshotDirectory() -> String {
+    if let loc = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location"), !loc.isEmpty {
+        let expanded = NSString(string: loc).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: expanded) {
+            return expanded
+        }
+    }
+    let picDir = NSString(string: "~/Pictures/Screenshot").expandingTildeInPath
+    if FileManager.default.fileExists(atPath: picDir) {
+        return picDir
+    }
+    return NSString(string: "~/Desktop").expandingTildeInPath
+}
 
 var isShiftHeld = false
 var isAltHeld = false
@@ -262,35 +277,48 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     // These must be handled globally across all apps, including QEMU/Android emulators & VMs!
     // ----------------------------------------------------
     if type == .keyDown || type == .keyUp {
-        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard (Ctrl + Cmd + Shift + 4) ---
+        // --- Windows Shortcut: Win + Shift + S -> macOS Area Screenshot to Clipboard ---
         if keyCode == 1 && hasShift && (hasCmd || isCmdHeld || hasCtrl) { // 's' with Win (Cmd) + Shift
-            event.setIntegerValueField(.keyboardEventKeycode, value: 21) // '4'
-            flags.insert(.maskControl)
-            flags.insert(.maskCommand)
-            flags.insert(.maskShift)
-            flags.remove(.maskAlternate)
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
+            if type == .keyDown && !isScreenCaptureRunning {
+                isScreenCaptureRunning = true
+                DispatchQueue.global().async {
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    proc.arguments = ["-i", "-c"]
+                    try? proc.run()
+                    proc.waitUntilExit()
+                    isScreenCaptureRunning = false
+                }
+            }
+            return nil
         }
 
         // --- Windows Shortcut: PrintScreen (F13: 105, F14: 107, F15: 113) ---
-        // PrtScn -> macOS Fullscreen to Clipboard (Ctrl + Cmd + Shift + 3)
-        // Win + PrtScn -> macOS Fullscreen to File (Cmd + Shift + 3)
+        // PrtScn -> macOS Fullscreen to Clipboard (screencapture -c)
+        // Win + PrtScn -> macOS Fullscreen to File (screencapture <destPath>)
         if keyCode == 105 || keyCode == 107 || keyCode == 113 {
-            let isWinPrtScn = hasCmd || hasCtrl || isCmdHeld || isCtrlHeld
-            event.setIntegerValueField(.keyboardEventKeycode, value: 20) // '3'
-            flags.insert(.maskCommand)
-            flags.insert(.maskShift)
-            flags.remove(.maskAlternate)
-            if isWinPrtScn {
-                // To file: Cmd + Shift + 3
-                flags.remove(.maskControl)
-            } else {
-                // To clipboard: Ctrl + Cmd + Shift + 3
-                flags.insert(.maskControl)
+            if type == .keyDown && !isScreenCaptureRunning {
+                isScreenCaptureRunning = true
+                let isWinPrtScn = hasCmd || hasCtrl || isCmdHeld || isCtrlHeld
+                DispatchQueue.global().async {
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    if isWinPrtScn {
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+                        let dateStr = formatter.string(from: Date())
+                        let destDir = getScreenshotDirectory()
+                        let destPath = "\(destDir)/Screenshot \(dateStr).png"
+                        proc.arguments = [destPath]
+                    } else {
+                        proc.arguments = ["-c"]
+                    }
+                    try? proc.run()
+                    proc.waitUntilExit()
+                    isScreenCaptureRunning = false
+                }
             }
-            event.flags = flags
-            return Unmanaged.passUnretained(event)
+            return nil
         }
 
         // --- Windows Shortcut: Win + Space -> LaunchOS (^Space / Control + Space) ---
