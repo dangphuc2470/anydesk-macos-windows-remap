@@ -165,20 +165,103 @@ func getScreenshotDirectory() -> String {
 
 func takeFullScreenScreenshot(toFile: Bool) {
     DispatchQueue.global().async {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        let screens = NSScreen.screens
+        if screens.count <= 1 {
+            // Single monitor: use native screencapture directly
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            if toFile {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+                let dateStr = formatter.string(from: Date())
+                let destDir = getScreenshotDirectory()
+                let destPath = "\(destDir)/Screenshot \(dateStr).png"
+                proc.arguments = [destPath]
+            } else {
+                proc.arguments = ["-c"]
+            }
+            try? proc.run()
+            proc.waitUntilExit()
+            isScreenCaptureRunning = false
+            return
+        }
+
+        // Multi-monitor: capture all displays and stitch them into a single panoramic canvas (Windows style)
+        var minX = CGFloat.infinity
+        var minY = CGFloat.infinity
+        var maxX = -CGFloat.infinity
+        var maxY = -CGFloat.infinity
+
+        for s in screens {
+            minX = min(minX, s.frame.minX)
+            minY = min(minY, s.frame.minY)
+            maxX = max(maxX, s.frame.maxX)
+            maxY = max(maxY, s.frame.maxY)
+        }
+
+        let totalSize = NSSize(width: maxX - minX, height: maxY - minY)
+        guard totalSize.width > 0 && totalSize.height > 0 else {
+            isScreenCaptureRunning = false
+            return
+        }
+
+        let tempPrefix = "/tmp/phucdnh_sc_\(ProcessInfo.processInfo.globallyUniqueString)"
+        var tempFiles = [String]()
+
+        for i in 1...screens.count {
+            let tempPath = "\(tempPrefix)_d\(i).png"
+            tempFiles.append(tempPath)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-D", "\(i)", tempPath]
+            try? p.run()
+            p.waitUntilExit()
+        }
+
+        let composite = NSImage(size: totalSize)
+        composite.lockFocus()
+        for (i, s) in screens.enumerated() {
+            if i < tempFiles.count, let img = NSImage(contentsOfFile: tempFiles[i]) {
+                let drawRect = NSRect(
+                    x: s.frame.origin.x - minX,
+                    y: s.frame.origin.y - minY,
+                    width: s.frame.width,
+                    height: s.frame.height
+                )
+                img.draw(in: drawRect)
+            }
+        }
+        composite.unlockFocus()
+
+        // Clean up temp files
+        for f in tempFiles {
+            try? FileManager.default.removeItem(atPath: f)
+        }
+
         if toFile {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
             let dateStr = formatter.string(from: Date())
             let destDir = getScreenshotDirectory()
             let destPath = "\(destDir)/Screenshot \(dateStr).png"
-            proc.arguments = [destPath]
+
+            if let tiff = composite.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let pngData = rep.representation(using: .png, properties: [:]) {
+                try? pngData.write(to: URL(fileURLWithPath: destPath))
+            }
         } else {
-            proc.arguments = ["-c"]
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([composite])
         }
-        try? proc.run()
-        proc.waitUntilExit()
+
+        // Play native camera shutter sound
+        let soundProc = Process()
+        soundProc.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+        soundProc.arguments = ["/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"]
+        try? soundProc.run()
+
         isScreenCaptureRunning = false
     }
 }
