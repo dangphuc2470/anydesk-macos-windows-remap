@@ -177,6 +177,22 @@ var eventTap: CFMachPort? = nil
 var pendingShiftUpEvent: CGEvent? = nil
 var shiftDebounceWorkItem: DispatchWorkItem? = nil
 
+// Release stuck Option (Alt) modifier in system WindowServer session
+func releaseStuckOption() {
+    isAltHeld = false
+    let sessionFlags = CGEventSource.flagsState(.combinedSessionState)
+    if sessionFlags.contains(.maskAlternate) {
+        if let ev = CGEvent(source: nil) {
+            ev.type = .flagsChanged
+            ev.setIntegerValueField(.keyboardEventKeycode, value: 58)
+            var f = sessionFlags
+            f.remove(.maskAlternate)
+            ev.flags = f
+            ev.post(tap: .cghidEventTap)
+        }
+    }
+}
+
 func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     // Re-enable tap if disabled by system timeout
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -187,19 +203,25 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     }
 
     // ----------------------------------------------------
-    // Mouse Click Events: AnyDesk synthesizes mouse events with flags=0,
+    // Mouse Events: AnyDesk synthesizes mouse events with flags=0,
     // which strips keyboard modifiers (Shift, Option, Command, Control).
-    // This breaks Shift+click (range text select) and Cmd/Ctrl+click.
-    // We attach active modifiers to mouse clicks.
+    // This breaks Shift+click, Cmd/Ctrl+click, and Ctrl+Cmd+Drag (window dragging).
+    // We attach active modifiers to mouse events.
     // ----------------------------------------------------
-    let isMouseClick = (type == .leftMouseDown || type == .leftMouseUp ||
-                        type == .rightMouseDown || type == .rightMouseUp)
-    if isMouseClick {
+    let isMouseEvent = (type == .leftMouseDown || type == .leftMouseUp || type == .leftMouseDragged ||
+                        type == .rightMouseDown || type == .rightMouseUp || type == .rightMouseDragged ||
+                        type == .otherMouseDown || type == .otherMouseUp || type == .otherMouseDragged)
+    if isMouseEvent {
         let sessionFlags = CGEventSource.flagsState(.combinedSessionState)
-        let needShift = isShiftHeld || sessionFlags.contains(.maskShift)
-        let needCmd = isCmdHeld || sessionFlags.contains(.maskCommand)
-        let needAlt = isAltHeld || sessionFlags.contains(.maskAlternate)
-        let needCtrl = isCtrlHeld || sessionFlags.contains(.maskControl)
+        let needShift = isShiftHeld
+        let needCmd = isCmdHeld
+        let needAlt = isAltHeld
+        let needCtrl = isCtrlHeld
+        
+        // If Alt is physically not held but system session retained .maskAlternate (e.g. dropped release after Alt-Tab), clear it
+        if !isAltHeld && sessionFlags.contains(.maskAlternate) {
+            releaseStuckOption()
+        }
         
         if needShift || needCmd || needAlt || needCtrl {
             var mFlags = event.flags
@@ -240,6 +262,13 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
     let hasCmd = flags.contains(.maskCommand)
     let hasAlt = flags.contains(.maskAlternate)
     let hasShift = flags.contains(.maskShift)
+
+    // Auto-release stuck Option (Alt) modifier if key event proves user is not holding Alt
+    if (type == .keyDown || type == .keyUp) && !hasAlt {
+        if isAltHeld || CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate) {
+            releaseStuckOption()
+        }
+    }
 
     // --- Windows Shortcut: Ctrl + Space -> Enter ---
     if type == .keyDown {
@@ -411,40 +440,23 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         // Swap Left Control (59) <-> Left Command (55)
         if keyCode == 59 {
             event.setIntegerValueField(.keyboardEventKeycode, value: 55)
-            if flags.contains(.maskControl) {
-                flags.remove(.maskControl)
-                flags.insert(.maskCommand)
-            } else {
-                flags.remove(.maskCommand)
-            }
-            event.flags = flags
         } else if keyCode == 55 {
             event.setIntegerValueField(.keyboardEventKeycode, value: 59)
-            if flags.contains(.maskCommand) {
-                flags.remove(.maskCommand)
-                flags.insert(.maskControl)
-            } else {
-                flags.remove(.maskControl)
-            }
-            event.flags = flags
         }
         // Swap Right Control (62) <-> Right Command (54)
         else if keyCode == 62 {
             event.setIntegerValueField(.keyboardEventKeycode, value: 54)
-            if flags.contains(.maskControl) {
-                flags.remove(.maskControl)
-                flags.insert(.maskCommand)
-            } else {
-                flags.remove(.maskCommand)
-            }
-            event.flags = flags
         } else if keyCode == 54 {
             event.setIntegerValueField(.keyboardEventKeycode, value: 62)
-            if flags.contains(.maskCommand) {
+        }
+
+        if hasCtrl != hasCmd {
+            if hasCtrl {
+                flags.remove(.maskControl)
+                flags.insert(.maskCommand)
+            } else if hasCmd {
                 flags.remove(.maskCommand)
                 flags.insert(.maskControl)
-            } else {
-                flags.remove(.maskControl)
             }
             event.flags = flags
         }
@@ -452,6 +464,9 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         isAltHeld = event.flags.contains(.maskAlternate)
         isCmdHeld = event.flags.contains(.maskCommand)
         isCtrlHeld = event.flags.contains(.maskControl)
+        if !isAltHeld && CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate) {
+            releaseStuckOption()
+        }
         return Unmanaged.passUnretained(event)
     }
     
@@ -558,7 +573,9 @@ print("[phucdnh] Accessibility trusted status: \(isTrusted)")
 
 let eventTypes: [CGEventType] = [
     .keyDown, .keyUp, .flagsChanged, .scrollWheel,
-    .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp
+    .leftMouseDown, .leftMouseUp, .leftMouseDragged,
+    .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+    .otherMouseDown, .otherMouseUp, .otherMouseDragged
 ]
 var eventMask: UInt64 = 0
 for evType in eventTypes {
@@ -606,4 +623,16 @@ CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 
 print("[phucdnh] AnyDesk Remap Daemon is ACTIVE. Intercepting all AnyDesk processes safely.")
+
+// Observer for app switches (DockDoor Alt+Tab) to unstick Option if focus change dropped keyUp
+NSWorkspace.shared.notificationCenter.addObserver(
+    forName: NSWorkspace.didActivateApplicationNotification,
+    object: nil,
+    queue: .main
+) { _ in
+    if isAltHeld || CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate) {
+        releaseStuckOption()
+    }
+}
+
 CFRunLoopRun()
